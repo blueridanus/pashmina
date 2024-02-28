@@ -10,7 +10,6 @@ pub struct Engine {
 
 impl Engine {
     pub async fn new() -> anyhow::Result<Self> {
-
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::PRIMARY,
             ..Default::default()
@@ -22,7 +21,7 @@ impl Engine {
             })
             .await
             .context("Adapter initialization failed")?;
-    
+
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
@@ -51,7 +50,11 @@ impl Engine {
                 source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("kernels/psum2.wgsl"))),
             }),
         );
-    
-        Ok(Self { device, queue, kernels })
+
+        Ok(Self {
+            device,
+            queue,
+            kernels,
+        })
     }
 }
