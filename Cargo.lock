@@ -725,7 +725,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "particles"
+name = "pashmina"
 version = "0.1.0"
 dependencies = [
  "anyhow",
