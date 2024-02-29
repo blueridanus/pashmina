@@ -12,5 +12,5 @@ fn main(
     @builtin(global_invocation_id) global_id: vec3u,
     @builtin(workgroup_id) wg_id: vec3u,
 ){
-    buf[global_id.x + WG_LEN] += prev[wg_id.x];
+    buf[global_id.x] += prev[wg_id.x];
 }
