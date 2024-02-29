@@ -4,6 +4,10 @@ use crate::engine::Engine;
 
 impl Engine {
     pub async fn prefix_sum(&self, input: &[u32]) -> anyhow::Result<Vec<u32>> {
+        if input.len() <= 1 {
+            return Ok(Vec::from(input));
+        }
+
         let storage_buffer = self
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -56,7 +60,7 @@ impl Engine {
 
         let next_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("next buffer"),
-            size: (4 * input_len).div_ceil(256),
+            size: 4 * (input_len).div_ceil(256),
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::COPY_SRC,
@@ -152,14 +156,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn trivial_input_works() -> anyhow::Result<()> {
+        let engine = Engine::new().await?;
+
+        assert_eq!(engine.prefix_sum(&[]).await?, vec![]);
+        assert_eq!(engine.prefix_sum(&[3]).await?, vec![3]);
+
+        let input = vec![0; 1 << 20];
+        assert_eq!(engine.prefix_sum(&input).await?, input);
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn short_sum_works() -> anyhow::Result<()> {
         let engine = Engine::new().await?;
 
-        let input: Vec<u32> = (1..=256u32).collect();
-        let expected: Vec<u32> = prefix_sum_cpu(&input);
-        let result = engine.prefix_sum(&input).await?;
+        for n in 1..=256 {
+            let input: Vec<u32> = (1..=n).collect();
+            let expected: Vec<u32> = prefix_sum_cpu(&input);
+            let result = engine.prefix_sum(&input).await?;
 
-        assert_eq!(result, expected);
+            assert_eq!(result, expected);
+        }
 
         Ok(())
     }
