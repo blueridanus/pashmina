@@ -133,7 +133,7 @@ impl Engine {
             let mut cpass = encoder.begin_compute_pass(&Default::default());
             cpass.set_pipeline(&compute_pipeline);
             cpass.set_bind_group(0, &bind_group, &[]);
-            cpass.insert_debug_marker("compute example");
+            cpass.insert_debug_marker("psum1 dispatch");
             cpass.dispatch_workgroups(input_len.div_ceil(256) as u32, 1, 1);
         }
 
