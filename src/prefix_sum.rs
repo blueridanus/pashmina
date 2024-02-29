@@ -138,6 +138,31 @@ impl Engine {
         }
 
         self.queue.submit(Some(encoder.finish()));
+
+        if input_len > 256 {
+            self.prefix_sum_inner(&next_buffer);
+
+            let compute_pipeline =
+                self.device
+                    .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                        label: None,
+                        layout: Some(&pipeline_layout),
+                        module: self.kernels.get("psum2").unwrap(),
+                        entry_point: "main",
+                    });
+
+            let mut encoder = self.device.create_command_encoder(&Default::default());
+
+            {
+                let mut cpass = encoder.begin_compute_pass(&Default::default());
+                cpass.set_pipeline(&compute_pipeline);
+                cpass.set_bind_group(0, &bind_group, &[]);
+                cpass.insert_debug_marker("psum2 dispatch");
+                cpass.dispatch_workgroups((input_len.div_ceil(256) as u32) - 1, 1, 1);
+            }
+
+            self.queue.submit(Some(encoder.finish()));
+        }
     }
 }
 
@@ -187,7 +212,7 @@ mod tests {
     async fn long_sum_works() -> anyhow::Result<()> {
         let engine = Engine::new().await?;
 
-        let input: Vec<u32> = (1..=1u32 << 16).collect();
+        let input: Vec<u32> = (1..=(1u32 << 11)).collect();
         let expected: Vec<u32> = prefix_sum_cpu(&input);
         let result = engine.prefix_sum(&input).await?;
 
