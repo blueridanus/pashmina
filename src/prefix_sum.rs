@@ -1,5 +1,3 @@
-use std::ops::Div;
-
 use wgpu::util::DeviceExt;
 
 use crate::engine::Engine;
@@ -27,7 +25,7 @@ impl Engine {
             mapped_at_creation: false,
         });
 
-        self.prefix_sum_inner(&storage_buffer);
+        self.prefix_sum_inner(&storage_buffer, 1);
 
         let mut encoder = self.device.create_command_encoder(&Default::default());
         encoder.copy_buffer_to_buffer(
@@ -57,8 +55,9 @@ impl Engine {
         Ok(result)
     }
 
-    pub fn prefix_sum_inner(&self, buf: &wgpu::Buffer) {
+    pub fn prefix_sum_inner(&self, buf: &wgpu::Buffer, level: u32) {
         let input_len = buf.size() / 4;
+        println!("Level {}: {}", level, input_len);
 
         let next_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("next buffer"),
@@ -74,7 +73,7 @@ impl Engine {
         self.dispatch_psum_kernel(&bufs, "psum1", 0);
 
         if input_len > 256 {
-            self.prefix_sum_inner(&next_buffer);
+            self.prefix_sum_inner(&next_buffer, level + 1);
             self.dispatch_psum_kernel(&bufs, "psum2", 1);
         }
     }
@@ -145,8 +144,10 @@ impl Engine {
                     resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                         buffer: bufs[1],
                         offset: 0,
-                        size: (4 * (wg_count % MAX_WORKGROUPS) as u64 / 256).try_into().ok(),
-                    })
+                        size: (4 * (wg_count % MAX_WORKGROUPS) as u64 / 256)
+                            .try_into()
+                            .ok(),
+                    }),
                 },
             ],
         });
@@ -165,7 +166,11 @@ impl Engine {
                             resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                                 buffer: bufs[0],
                                 offset: 0,
-                                size: bufs[0].size().min(MAX_WORKGROUPS as u64 * 4).try_into().ok(),
+                                size: bufs[0]
+                                    .size()
+                                    .min(MAX_WORKGROUPS as u64 * 4)
+                                    .try_into()
+                                    .ok(),
                             }),
                         },
                         wgpu::BindGroupEntry {
@@ -173,16 +178,20 @@ impl Engine {
                             resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                                 buffer: bufs[1],
                                 offset: 0,
-                                size: bufs[1].size().min(4 * (MAX_WORKGROUPS) as u64 / 256).try_into().ok(),
-                            })
+                                size: bufs[1]
+                                    .size()
+                                    .min(4 * (MAX_WORKGROUPS) as u64 / 256)
+                                    .try_into()
+                                    .ok(),
+                            }),
                         },
                     ],
-                })
+                }),
             );
         }
 
         let mut encoder = self.device.create_command_encoder(&Default::default());
-        
+
         for dispatch_i in 0..dispatch_count {
             let mut cpass = encoder.begin_compute_pass(&Default::default());
             cpass.insert_debug_marker(&format!("{} dispatch", kernel));
@@ -215,15 +224,36 @@ mod tests {
             .collect()
     }
 
+    fn assert_slices_eq(left: &[u32], right: &[u32]) {
+        assert_eq!(left.len(), right.len());
+        for (i, (a, b)) in std::iter::zip(left.iter(), right.iter()).enumerate() {
+            if a != b {
+                let mut error_msg = format!("assertion failure: vec mismatch at index {}\n", i);
+                error_msg.push_str(&format!(
+                    "{: <10} | {: <15} | {: <15}\n",
+                    "index", "left", "right"
+                ));
+                let start = i.saturating_sub(10);
+                let end = (i + 10).min(left.len() - 1);
+                for display_i in start..end {
+                    error_msg.push_str(&format!(
+                        "{: <10} | {: <15} | {: <15}\n",
+                        display_i, left[display_i], right[display_i]
+                    ));
+                }
+                panic!("{}", error_msg);
+            }
+        }
+    }
+
     #[tokio::test]
     async fn trivial_input_works() -> anyhow::Result<()> {
         let engine = Engine::new().await?;
 
-        assert_eq!(engine.prefix_sum(&[]).await?, vec![]);
-        assert_eq!(engine.prefix_sum(&[3]).await?, vec![3]);
-
+        assert_slices_eq(&engine.prefix_sum(&[]).await?, &[]);
+        assert_slices_eq(&engine.prefix_sum(&[3]).await?, &[3]);
         let input = vec![0; 1 << 20];
-        assert_eq!(engine.prefix_sum(&input).await?, input);
+        assert_slices_eq(&engine.prefix_sum(&input).await?, &input);
 
         Ok(())
     }
@@ -237,7 +267,7 @@ mod tests {
             let expected: Vec<u32> = prefix_sum_cpu(&input);
             let result = engine.prefix_sum(&input).await?;
 
-            assert_eq!(result, expected);
+            assert_slices_eq(&result, &expected);
         }
 
         Ok(())
@@ -251,7 +281,7 @@ mod tests {
         let expected: Vec<u32> = prefix_sum_cpu(&input);
         let result = engine.prefix_sum(&input).await?;
 
-        assert_eq!(result, expected);
+        assert_slices_eq(&result, &expected);
 
         Ok(())
     }
@@ -260,13 +290,21 @@ mod tests {
     async fn very_long_sum_works() -> anyhow::Result<()> {
         let engine = Engine::new().await?;
 
+        let input: Vec<u32> = (1..=16u32).cycle().take(1 << 23).collect();
+        assert_slices_eq(&engine.prefix_sum(&input).await?, &prefix_sum_cpu(&input));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn very_very_long_sum_works() -> anyhow::Result<()> {
+        let engine = Engine::new().await?;
+
         let input: Vec<u32> = (1..=16u32).cycle().take(1 << 25).collect();
         let expected: Vec<u32> = prefix_sum_cpu(&input);
         let result = engine.prefix_sum(&input).await?;
 
-        assert_eq!(result.len(), expected.len());
-        assert_eq!(&result[1<<24..(1<<24)+25], &expected[1<<24..(1<<24)+25]);
-        assert_eq!(result, expected);
+        assert_slices_eq(&result, &expected);
 
         Ok(())
     }
