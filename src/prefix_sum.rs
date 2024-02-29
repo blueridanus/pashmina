@@ -25,7 +25,7 @@ impl Engine {
             mapped_at_creation: false,
         });
 
-        self.prefix_sum_inner(&storage_buffer, 1);
+        self.prefix_sum_inner(&storage_buffer);
 
         let mut encoder = self.device.create_command_encoder(&Default::default());
         encoder.copy_buffer_to_buffer(
@@ -55,9 +55,8 @@ impl Engine {
         Ok(result)
     }
 
-    pub fn prefix_sum_inner(&self, buf: &wgpu::Buffer, level: u32) {
+    pub fn prefix_sum_inner(&self, buf: &wgpu::Buffer) {
         let input_len = buf.size() / 4;
-        println!("Level {}: {}", level, input_len);
 
         let next_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("next buffer"),
@@ -73,7 +72,7 @@ impl Engine {
         self.dispatch_psum_kernel(&bufs, "psum1", 0);
 
         if input_len > 256 {
-            self.prefix_sum_inner(&next_buffer, level + 1);
+            self.prefix_sum_inner(&next_buffer);
             self.dispatch_psum_kernel(&bufs, "psum2", 1);
         }
     }
