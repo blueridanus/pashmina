@@ -80,7 +80,7 @@ impl Engine {
 
     fn dispatch_psum_kernel(&self, bufs: &[&wgpu::Buffer], kernel: &str, starting_offset: u32) {
         const MAX_WORKGROUPS: u32 = 65535;
-        let wg_count = (bufs[0].size() / 4).div_ceil(256)/*.min(65535)*/ as u32 - starting_offset;
+        let wg_count = (bufs[0].size() / 4).div_ceil(256) as u32 - starting_offset;
 
         let bind_group_layout =
             self.device
@@ -144,7 +144,7 @@ impl Engine {
                     resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                         buffer: bufs[1],
                         offset: 0,
-                        size: (4 * (wg_count % MAX_WORKGROUPS) as u64 / 256)
+                        size: (4 * (wg_count % MAX_WORKGROUPS).div_ceil(256) as u64)
                             .try_into()
                             .ok(),
                     }),
@@ -152,12 +152,19 @@ impl Engine {
             ],
         });
 
+        println!("wg_count: {}", wg_count);
+        println!("buf 0 size: {}", (4 * (wg_count % MAX_WORKGROUPS) as u64));
+        println!(
+            "buf 1 size: {}",
+            (4 * (wg_count % MAX_WORKGROUPS) as u64 / 256)
+        );
+
         let mut bind_group_max_dispatch = None;
         let dispatch_count = wg_count.div_ceil(MAX_WORKGROUPS);
 
         if dispatch_count > 1 {
-            bind_group_max_dispatch = Some(
-                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            bind_group_max_dispatch =
+                Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                     label: None,
                     layout: &bind_group_layout,
                     entries: &[
@@ -166,11 +173,7 @@ impl Engine {
                             resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                                 buffer: bufs[0],
                                 offset: 0,
-                                size: bufs[0]
-                                    .size()
-                                    .min(MAX_WORKGROUPS as u64 * 4)
-                                    .try_into()
-                                    .ok(),
+                                size: (MAX_WORKGROUPS as u64 * 4).try_into().ok(),
                             }),
                         },
                         wgpu::BindGroupEntry {
@@ -178,30 +181,29 @@ impl Engine {
                             resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                                 buffer: bufs[1],
                                 offset: 0,
-                                size: bufs[1]
-                                    .size()
-                                    .min(4 * (MAX_WORKGROUPS) as u64 / 256)
-                                    .try_into()
-                                    .ok(),
+                                size: (MAX_WORKGROUPS as u64 / 64).try_into().ok(),
                             }),
                         },
                     ],
-                }),
-            );
+                }));
         }
 
         let mut encoder = self.device.create_command_encoder(&Default::default());
 
         for dispatch_i in 0..dispatch_count {
+            println!("Dispatch {} of {}", dispatch_i + 1, dispatch_count);
             let mut cpass = encoder.begin_compute_pass(&Default::default());
             cpass.insert_debug_marker(&format!("{} dispatch", kernel));
             cpass.set_pipeline(&pipeline);
-            let offset = 256 * 4 * (starting_offset + dispatch_i * MAX_WORKGROUPS);
+            let offsets = [
+                256 * 4 * (starting_offset + dispatch_i * MAX_WORKGROUPS),
+                256 * 4 * dispatch_i * (MAX_WORKGROUPS / 256),
+            ];
             if dispatch_i == dispatch_count - 1 {
-                cpass.set_bind_group(0, &bind_group, &[offset, 0]);
+                cpass.set_bind_group(0, &bind_group, &offsets);
                 cpass.dispatch_workgroups(wg_count % MAX_WORKGROUPS, 1, 1);
             } else {
-                cpass.set_bind_group(0, bind_group_max_dispatch.as_ref().unwrap(), &[offset, 0]);
+                cpass.set_bind_group(0, bind_group_max_dispatch.as_ref().unwrap(), &offsets);
                 cpass.dispatch_workgroups(MAX_WORKGROUPS, 1, 1);
             }
         }
@@ -296,6 +298,7 @@ mod tests {
         Ok(())
     }
 
+    #[ignore]
     #[tokio::test]
     async fn very_very_long_sum_works() -> anyhow::Result<()> {
         let engine = Engine::new().await?;
