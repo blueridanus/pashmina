@@ -67,6 +67,19 @@ impl Engine {
             mapped_at_creation: false,
         });
 
+        let bufs = [ buf, &next_buffer ];
+
+        self.dispatch_psum_kernel(&bufs, "psum1", 0);
+
+        if input_len > 256 {
+            self.prefix_sum_inner(&next_buffer);
+            self.dispatch_psum_kernel(&bufs, "psum2", 1);
+        }
+    }
+
+    fn dispatch_psum_kernel(&self, bufs: &[&wgpu::Buffer], kernel: &str, offset: u32) {
+        let wg_count = (bufs[0].size() / 4).div_ceil(256)/*.min(65535)*/ as u32 - offset;
+
         let bind_group_layout =
             self.device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -103,14 +116,14 @@ impl Engine {
                 push_constant_ranges: &[],
             });
 
-        let compute_pipeline =
-            self.device
-                .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                    label: None,
-                    layout: Some(&pipeline_layout),
-                    module: self.kernels.get("psum1").unwrap(),
-                    entry_point: "main",
-                });
+        let pipeline = self
+            .device
+            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: None,
+                layout: Some(&pipeline_layout),
+                module: self.kernels.get(kernel).unwrap(),
+                entry_point: "main",
+            });
 
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
@@ -118,11 +131,11 @@ impl Engine {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: buf.as_entire_binding(),
+                    resource: bufs[0].as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: next_buffer.as_entire_binding(),
+                    resource: bufs[1].as_entire_binding(),
                 },
             ],
         });
@@ -131,38 +144,13 @@ impl Engine {
 
         {
             let mut cpass = encoder.begin_compute_pass(&Default::default());
-            cpass.set_pipeline(&compute_pipeline);
+            cpass.set_pipeline(&pipeline);
             cpass.set_bind_group(0, &bind_group, &[]);
-            cpass.insert_debug_marker("psum1 dispatch");
-            cpass.dispatch_workgroups(input_len.div_ceil(256) as u32, 1, 1);
+            cpass.insert_debug_marker(&format!("{} dispatch", kernel));
+            cpass.dispatch_workgroups(wg_count, 1, 1);
         }
 
         self.queue.submit(Some(encoder.finish()));
-
-        if input_len > 256 {
-            self.prefix_sum_inner(&next_buffer);
-
-            let compute_pipeline =
-                self.device
-                    .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                        label: None,
-                        layout: Some(&pipeline_layout),
-                        module: self.kernels.get("psum2").unwrap(),
-                        entry_point: "main",
-                    });
-
-            let mut encoder = self.device.create_command_encoder(&Default::default());
-
-            {
-                let mut cpass = encoder.begin_compute_pass(&Default::default());
-                cpass.set_pipeline(&compute_pipeline);
-                cpass.set_bind_group(0, &bind_group, &[]);
-                cpass.insert_debug_marker("psum2 dispatch");
-                cpass.dispatch_workgroups((input_len.div_ceil(256) as u32) - 1, 1, 1);
-            }
-
-            self.queue.submit(Some(encoder.finish()));
-        }
     }
 }
 
