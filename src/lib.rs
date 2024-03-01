@@ -6,7 +6,7 @@ use std::{borrow::Cow, collections::HashMap};
 use anyhow::Context;
 
 #[repr(C, align(16))]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, PartialEq, PartialOrd, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vec3A {
     pub x: f32,
     pub y: f32,
@@ -22,6 +22,12 @@ impl Vec3A {
             z,
             _padding: [0u8; 4],
         }
+    }
+}
+
+impl std::fmt::Debug for Vec3A {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Vec3A({}, {}, {})", self.x, self.y, self.z)
     }
 }
 
@@ -117,6 +123,22 @@ impl Engine {
                 source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("kernels/fenns_sort1.wgsl"))),
             }),
         );
+        
+        kernels.insert(
+            "fenns_sort2".into(),
+            device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("kernels/fenns_sort2.wgsl"),
+                source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("kernels/fenns_sort2.wgsl"))),
+            }),
+        );
+        
+        kernels.insert(
+            "fenns_sort_shift".into(),
+            device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("kernels/fenns_sort_shift.wgsl"),
+                source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("kernels/fenns_sort_shift.wgsl"))),
+            }),
+        );
 
         Ok(Self {
             device,
@@ -128,24 +150,40 @@ impl Engine {
 
 #[cfg(test)]
 mod tests {
-    pub(crate) fn assert_slices_eq(left: &[u32], right: &[u32]) {
+    use std::fmt::Write;
+
+    pub(crate) fn print_slice_comparison<T: std::fmt::Debug>(pos: usize, name_a: &str, a: &[T], name_b: &str, b: &[T]) {
+        assert_eq!(a.len(), b.len());
+
+        let mut msg = String::new();
+
+        let start = pos.saturating_sub(30);
+        let end = (pos + 30).min(a.len() - 1);
+
+        write!(
+            msg,
+            "{: <10} | {: <45} | {: <45}\n",
+            "idx", name_a, name_b,
+        ).unwrap();
+
+        for display_i in start..end {
+            write!(
+                msg,
+                "{: <10} | {: <45} | {: <45}\n",
+                display_i, format!("{:?}", a[display_i]), format!("{:?}", b[display_i])
+            ).unwrap();
+        }
+
+        print!("{}", msg);
+    }
+
+    pub(crate) fn assert_slices_eq<T: PartialEq + std::fmt::Debug>(left: &[T], right: &[T]) {
         assert_eq!(left.len(), right.len());
         for (i, (a, b)) in std::iter::zip(left.iter(), right.iter()).enumerate() {
             if a != b {
-                let mut error_msg = format!("assertion failure: vec mismatch at index {}\n", i);
-                error_msg.push_str(&format!(
-                    "{: <10} | {: <15} | {: <15}\n",
-                    "index", "left", "right"
-                ));
-                let start = i.saturating_sub(10);
-                let end = (i + 10).min(left.len() - 1);
-                for display_i in start..end {
-                    error_msg.push_str(&format!(
-                        "{: <10} | {: <15} | {: <15}\n",
-                        display_i, left[display_i], right[display_i]
-                    ));
-                }
-                panic!("{}", error_msg);
+                print_slice_comparison(i, "left", left, "right", right);
+                
+                panic!("assertion failure: vec mismatch at index {}\n", i);
             }
         }
     }

@@ -118,14 +118,7 @@ impl Engine {
                 },
             ],
         });
-
-        println!("wg_count: {}", wg_count);
-        println!("buf 0 size: {}", (4 * (wg_count % MAX_WORKGROUPS) as u64));
-        println!(
-            "buf 1 size: {}",
-            (4 * (wg_count % MAX_WORKGROUPS) as u64 / 256)
-        );
-
+        
         let mut bind_group_max_dispatch = None;
         let dispatch_count = wg_count.div_ceil(MAX_WORKGROUPS);
 
@@ -158,7 +151,6 @@ impl Engine {
         let mut encoder = self.device.create_command_encoder(&Default::default());
 
         for dispatch_i in 0..dispatch_count {
-            println!("Dispatch {} of {}", dispatch_i + 1, dispatch_count);
             let mut cpass = encoder.begin_compute_pass(&Default::default());
             cpass.insert_debug_marker(&format!("{} dispatch", kernel));
             cpass.set_pipeline(&pipeline);
