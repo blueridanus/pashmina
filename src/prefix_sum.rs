@@ -162,9 +162,6 @@ impl Engine {
                 256 * 4 * dispatch_i * (MAX_WORKGROUPS / 256),
             ];
             
-            dbg!(offsets);
-            dbg!(starting_offset);
-            
             if dispatch_i == dispatch_count - 1 {
                 cpass.set_bind_group(0, &bind_group, &offsets);
                 cpass.dispatch_workgroups(wg_remainder, 1, 1);

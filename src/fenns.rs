@@ -307,17 +307,24 @@ mod tests {
         Ok(())
     }
 
-    
     #[tokio::test]
     async fn check_fenns_sort2() -> anyhow::Result<()> {
         let engine = Engine::new().await?;
 
-        const SEED: u64 = 0;
+        for seed in 0..50 {
+            println!("Seed: {}", seed);
+            check_fenns_sort2_inner(&engine, seed).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn check_fenns_sort2_inner(engine: &Engine, seed: u64) -> anyhow::Result<()> {
         const GRID_DIM: usize = 18;
         const GRID_SIZE: usize = GRID_DIM * GRID_DIM * GRID_DIM;
         const CELL_SIZE: f32 = 1.0;
         const SEARCH_RADIUS: f32 = 0.1;
-        let (particles, particle_counts) = gen_particles(SEED, GRID_DIM);
+        let (particles, particle_counts) = gen_particles(seed, GRID_DIM);
 
         println!("Particle count: {}", particles.len());
         assert_eq!(particles.len() as u32, particle_counts.iter().sum());
@@ -364,6 +371,13 @@ mod tests {
 
         let reordered: Vec<Vec3A> = engine.map_buffer(&reordered_buf).await?;
         
+        let original_zeros = particles.iter().filter(|&&v| v == Vec3A::new(0.0,0.0,0.0)).count();
+        let reordered_zeros = reordered.iter().enumerate().filter(|(i, &v)| v == Vec3A::new(0.0,0.0,0.0));
+        
+        if reordered_zeros.clone().count() != original_zeros {
+            panic!("Reordering has zero particles: {:?}", reordered_zeros.collect::<Vec<(usize, _)>>())
+        }
+
         let is_border_particle = |particle: Vec3A| {
             for coord in &[particle.x, particle.y, particle.z]{
                 let cell_coord = (coord / CELL_SIZE).fract();
