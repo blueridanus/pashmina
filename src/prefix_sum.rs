@@ -1,6 +1,6 @@
 use wgpu::util::DeviceExt;
 
-use crate::engine::Engine;
+use crate::Engine;
 
 impl Engine {
     pub async fn prefix_sum(&self, input: &[u32]) -> anyhow::Result<Vec<u32>> {
@@ -182,6 +182,7 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::assert_slices_eq;
 
     fn prefix_sum_cpu(input: &[u32]) -> Vec<u32> {
         input
@@ -191,28 +192,6 @@ mod tests {
                 Some(*acc)
             })
             .collect()
-    }
-
-    fn assert_slices_eq(left: &[u32], right: &[u32]) {
-        assert_eq!(left.len(), right.len());
-        for (i, (a, b)) in std::iter::zip(left.iter(), right.iter()).enumerate() {
-            if a != b {
-                let mut error_msg = format!("assertion failure: vec mismatch at index {}\n", i);
-                error_msg.push_str(&format!(
-                    "{: <10} | {: <15} | {: <15}\n",
-                    "index", "left", "right"
-                ));
-                let start = i.saturating_sub(10);
-                let end = (i + 10).min(left.len() - 1);
-                for display_i in start..end {
-                    error_msg.push_str(&format!(
-                        "{: <10} | {: <15} | {: <15}\n",
-                        display_i, left[display_i], right[display_i]
-                    ));
-                }
-                panic!("{}", error_msg);
-            }
-        }
     }
 
     #[tokio::test]

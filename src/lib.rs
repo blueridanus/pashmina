@@ -1,6 +1,29 @@
+mod prefix_sum;
+mod fenns;
+
 use std::{borrow::Cow, collections::HashMap};
 
 use anyhow::Context;
+
+#[repr(C, align(16))]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Vec3A {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    _padding: [u8; 4],
+}
+
+impl Vec3A {
+    pub fn new(x: f32, y: f32, z: f32) -> Self {
+        Self {
+            x,
+            y,
+            z,
+            _padding: [0u8; 4],
+        }
+    }
+}
 
 pub struct Engine {
     pub device: wgpu::Device,
@@ -87,10 +110,43 @@ impl Engine {
             }),
         );
 
+        kernels.insert(
+            "fenns_sort1".into(),
+            device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("kernels/fenns_sort1.wgsl"),
+                source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("kernels/fenns_sort1.wgsl"))),
+            }),
+        );
+
         Ok(Self {
             device,
             queue,
             kernels,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    pub(crate) fn assert_slices_eq(left: &[u32], right: &[u32]) {
+        assert_eq!(left.len(), right.len());
+        for (i, (a, b)) in std::iter::zip(left.iter(), right.iter()).enumerate() {
+            if a != b {
+                let mut error_msg = format!("assertion failure: vec mismatch at index {}\n", i);
+                error_msg.push_str(&format!(
+                    "{: <10} | {: <15} | {: <15}\n",
+                    "index", "left", "right"
+                ));
+                let start = i.saturating_sub(10);
+                let end = (i + 10).min(left.len() - 1);
+                for display_i in start..end {
+                    error_msg.push_str(&format!(
+                        "{: <10} | {: <15} | {: <15}\n",
+                        display_i, left[display_i], right[display_i]
+                    ));
+                }
+                panic!("{}", error_msg);
+            }
+        }
     }
 }
