@@ -87,6 +87,9 @@ impl Engine {
             .await
             .context("Adapter initialization failed")?;
 
+        #[cfg(test)]
+        println!("{:?}\n", adapter.get_info());
+
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
