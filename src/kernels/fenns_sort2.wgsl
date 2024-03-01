@@ -50,7 +50,6 @@ fn main(
         }
 
         reordered[reorderedPos] = particle;
-        //reordered[global_id.x] = Particle(vec3f(vec3u(local_id.x, atomicLoad(&count[gridCellIdx]), atomicLoad(&count[GRID_SIZE + gridCellIdx]))));
     }
     storageBarrier();
     

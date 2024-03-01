@@ -161,7 +161,7 @@ mod tests {
         let mut msg = String::new();
 
         let start = pos.saturating_sub(30);
-        let end = (pos + 30).min(a.len() - 1);
+        let end = (pos + 30).min(a.len());
 
         write!(
             msg,

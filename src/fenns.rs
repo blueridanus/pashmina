@@ -363,9 +363,6 @@ mod tests {
         engine.fenns_sort2(&[&params_buf, &particles_buf, &count_buf, &reordered_buf]);
 
         let reordered: Vec<Vec3A> = engine.map_buffer(&reordered_buf).await?;
-
-        // print_slice_comparison(1282, "before", &particles, "after", &reordered);
-        // panic!();
         
         let is_border_particle = |particle: Vec3A| {
             for coord in &[particle.x, particle.y, particle.z]{

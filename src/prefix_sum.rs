@@ -47,7 +47,7 @@ impl Engine {
 
     fn dispatch_psum_kernel(&self, bufs: &[&wgpu::Buffer], kernel: &str, starting_offset: u32) {
         const MAX_WORKGROUPS: u32 = 65535;
-        let wg_count = (bufs[0].size() / 4).div_ceil(256) as u32 - starting_offset;
+        let total_wg_count = (bufs[0].size() / 4).div_ceil(256) as u32 - starting_offset;
 
         let bind_group_layout =
             self.device
@@ -94,6 +94,11 @@ impl Engine {
                 entry_point: "main",
             });
 
+        let wg_remainder = total_wg_count % MAX_WORKGROUPS;
+        let mut buf1_size_remainder = bufs[0].size() % (MAX_WORKGROUPS as u64 * 256 * 4);
+        let buf2_size_remainder = buf1_size_remainder.div_ceil(256).max(4);
+        buf1_size_remainder -= starting_offset as u64 * 256 * 4;
+
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &bind_group_layout,
@@ -102,8 +107,8 @@ impl Engine {
                     binding: 0,
                     resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                         buffer: bufs[0],
-                        offset: 0,
-                        size: (4 * (wg_count % MAX_WORKGROUPS) as u64).try_into().ok(),
+                        offset: starting_offset as u64 * 256 * 4,
+                        size: buf1_size_remainder.try_into().ok(),
                     }),
                 },
                 wgpu::BindGroupEntry {
@@ -111,16 +116,14 @@ impl Engine {
                     resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                         buffer: bufs[1],
                         offset: 0,
-                        size: (4 * (wg_count % MAX_WORKGROUPS).div_ceil(256) as u64)
-                            .try_into()
-                            .ok(),
+                        size: buf2_size_remainder.try_into().ok(),
                     }),
                 },
             ],
         });
-        
+
         let mut bind_group_max_dispatch = None;
-        let dispatch_count = wg_count.div_ceil(MAX_WORKGROUPS);
+        let dispatch_count = total_wg_count.div_ceil(MAX_WORKGROUPS);
 
         if dispatch_count > 1 {
             bind_group_max_dispatch =
@@ -132,8 +135,8 @@ impl Engine {
                             binding: 0,
                             resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                                 buffer: bufs[0],
-                                offset: 0,
-                                size: (MAX_WORKGROUPS as u64 * 4).try_into().ok(),
+                                offset: starting_offset as u64 * 256 * 4,
+                                size: (MAX_WORKGROUPS as u64 * 256 * 4).try_into().ok(),
                             }),
                         },
                         wgpu::BindGroupEntry {
@@ -141,7 +144,7 @@ impl Engine {
                             resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                                 buffer: bufs[1],
                                 offset: 0,
-                                size: (MAX_WORKGROUPS as u64 / 64).try_into().ok(),
+                                size: (MAX_WORKGROUPS as u64 * 4).try_into().ok(),
                             }),
                         },
                     ],
@@ -155,12 +158,16 @@ impl Engine {
             cpass.insert_debug_marker(&format!("{} dispatch", kernel));
             cpass.set_pipeline(&pipeline);
             let offsets = [
-                256 * 4 * (starting_offset + dispatch_i * MAX_WORKGROUPS),
+                256 * 4 * dispatch_i * MAX_WORKGROUPS,
                 256 * 4 * dispatch_i * (MAX_WORKGROUPS / 256),
             ];
+            
+            dbg!(offsets);
+            dbg!(starting_offset);
+            
             if dispatch_i == dispatch_count - 1 {
                 cpass.set_bind_group(0, &bind_group, &offsets);
-                cpass.dispatch_workgroups(wg_count % MAX_WORKGROUPS, 1, 1);
+                cpass.dispatch_workgroups(wg_remainder, 1, 1);
             } else {
                 cpass.set_bind_group(0, bind_group_max_dispatch.as_ref().unwrap(), &offsets);
                 cpass.dispatch_workgroups(MAX_WORKGROUPS, 1, 1);
