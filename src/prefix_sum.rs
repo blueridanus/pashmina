@@ -176,11 +176,11 @@ impl Engine {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::tests::assert_slices_eq;
 
-    fn prefix_sum_cpu(input: &[u32]) -> Vec<u32> {
+    pub(crate) fn prefix_sum_cpu(input: &[u32]) -> Vec<u32> {
         input
             .iter()
             .scan(0u32, |acc, x| {

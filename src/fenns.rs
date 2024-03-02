@@ -1,6 +1,8 @@
 use crate::Engine;
 
 impl Engine {
+    const FENNS_WG_SIZE: u64 = 64;
+
     pub fn fenns_sort1(&self, bufs: &[&wgpu::Buffer]) {
         let bind_group_layout =
             self.device
@@ -84,7 +86,7 @@ impl Engine {
             cpass.insert_debug_marker("fenns_sort1 dispatch");
             cpass.set_pipeline(&pipeline);
             cpass.set_bind_group(0, &bind_group, &[]);
-            cpass.dispatch_workgroups(len.div_ceil(64) as u32, 1, 1);
+            cpass.dispatch_workgroups(len.div_ceil(Self::FENNS_WG_SIZE) as u32, 1, 1);
         }
 
         self.queue.submit(Some(encoder.finish()));
@@ -117,7 +119,7 @@ impl Engine {
             cpass.insert_debug_marker("fenns_sort_shuffle dispatch");
             cpass.set_pipeline(&pipeline);
             cpass.set_bind_group(0, &bind_group, &[]);
-            cpass.dispatch_workgroups(len.div_ceil(64) as u32, 1, 1);
+            cpass.dispatch_workgroups(len.div_ceil(Self::FENNS_WG_SIZE) as u32, 1, 1);
         }
 
         self.queue.submit(Some(encoder.finish()));
@@ -220,7 +222,7 @@ impl Engine {
             cpass.insert_debug_marker("fenns_sort2 dispatch");
             cpass.set_pipeline(&pipeline);
             cpass.set_bind_group(0, &bind_group, &[]);
-            cpass.dispatch_workgroups(len.div_ceil(64) as u32, 1, 1);
+            cpass.dispatch_workgroups(len.div_ceil(Self::FENNS_WG_SIZE) as u32, 1, 1);
         }
 
         self.queue.submit(Some(encoder.finish()));
@@ -360,7 +362,16 @@ mod tests {
         });
 
         engine.fenns_sort1(&[&params_buf, &particles_buf, &count_buf]);
+
+        let counts: Vec<u32> = engine.map_buffer(&count_buf).await?;
+
         engine.prefix_sum_inner(&count_buf);
+
+        let summed: Vec<u32> = engine.map_buffer(&count_buf).await?;
+        let expected_sum = crate::prefix_sum::tests::prefix_sum_cpu(&counts);
+
+        assert_slices_eq(&summed, &expected_sum);
+
         engine.fenns_sort_shift(&count_buf);
         
         let shifted: Vec<u32> = engine.map_buffer(&count_buf).await?;
