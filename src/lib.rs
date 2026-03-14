@@ -1,5 +1,5 @@
-mod prefix_sum;
 mod fenns;
+mod prefix_sum;
 
 use std::{borrow::Cow, collections::HashMap};
 
@@ -47,13 +47,7 @@ impl Engine {
         });
 
         let mut encoder = self.device.create_command_encoder(&Default::default());
-        encoder.copy_buffer_to_buffer(
-            buf,
-            0,
-            &staging_buffer,
-            0,
-            buf.size(),
-        );
+        encoder.copy_buffer_to_buffer(buf, 0, &staging_buffer, 0, buf.size());
 
         self.queue.submit(Some(encoder.finish()));
 
@@ -123,15 +117,19 @@ impl Engine {
             "fenns_sort1".into(),
             device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("kernels/fenns_sort1.wgsl"),
-                source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("kernels/fenns_sort1.wgsl"))),
+                source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!(
+                    "kernels/fenns_sort1.wgsl"
+                ))),
             }),
         );
-        
+
         kernels.insert(
             "fenns_sort2".into(),
             device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("kernels/fenns_sort2.wgsl"),
-                source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("kernels/fenns_sort2.wgsl"))),
+                source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!(
+                    "kernels/fenns_sort2.wgsl"
+                ))),
             }),
         );
 
@@ -139,15 +137,29 @@ impl Engine {
             "fenns_sort_restore".into(),
             device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("kernels/fenns_sort_restore.wgsl"),
-                source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("kernels/fenns_sort_restore.wgsl"))),
+                source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!(
+                    "kernels/fenns_sort_restore.wgsl"
+                ))),
             }),
         );
-        
+
         kernels.insert(
             "fenns_sort_shift".into(),
             device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("kernels/fenns_sort_shift.wgsl"),
-                source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("kernels/fenns_sort_shift.wgsl"))),
+                source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!(
+                    "kernels/fenns_sort_shift.wgsl"
+                ))),
+            }),
+        );
+
+        kernels.insert(
+            "fenns_search".into(),
+            device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("kernels/fenns_search.wgsl"),
+                source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!(
+                    "kernels/fenns_search.wgsl"
+                ))),
             }),
         );
 
@@ -163,7 +175,13 @@ impl Engine {
 mod tests {
     use std::fmt::Write;
 
-    pub(crate) fn print_slice_comparison<T: std::fmt::Debug>(pos: usize, name_a: &str, a: &[T], name_b: &str, b: &[T]) {
+    pub(crate) fn print_slice_comparison<T: std::fmt::Debug>(
+        pos: usize,
+        name_a: &str,
+        a: &[T],
+        name_b: &str,
+        b: &[T],
+    ) {
         assert_eq!(a.len(), b.len());
 
         let mut msg = String::new();
@@ -171,18 +189,17 @@ mod tests {
         let start = pos.saturating_sub(30);
         let end = (pos + 30).min(a.len());
 
-        write!(
-            msg,
-            "{: <10} | {: <45} | {: <45}\n",
-            "idx", name_a, name_b,
-        ).unwrap();
+        write!(msg, "{: <10} | {: <45} | {: <45}\n", "idx", name_a, name_b,).unwrap();
 
         for display_i in start..end {
             write!(
                 msg,
                 "{: <10} | {: <45} | {: <45}\n",
-                display_i, format!("{:?}", a[display_i]), format!("{:?}", b[display_i])
-            ).unwrap();
+                display_i,
+                format!("{:?}", a[display_i]),
+                format!("{:?}", b[display_i])
+            )
+            .unwrap();
         }
 
         print!("{}", msg);
@@ -193,7 +210,7 @@ mod tests {
         for (i, (a, b)) in std::iter::zip(left.iter(), right.iter()).enumerate() {
             if a != b {
                 print_slice_comparison(i, "left", left, "right", right);
-                
+
                 panic!("assertion failure: vec mismatch at index {}\n", i);
             }
         }
