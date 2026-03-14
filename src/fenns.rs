@@ -113,7 +113,7 @@ impl Engine {
         });
 
         let mut encoder = self.device.create_command_encoder(&Default::default());
-        let len = buf.size() / 4;
+        let len = buf.size() / 8;
         {
             let mut cpass = encoder.begin_compute_pass(&Default::default());
             cpass.insert_debug_marker("fenns_sort_shuffle dispatch");
@@ -243,6 +243,7 @@ mod tests {
 
     pub fn gen_particles(seed: u64, grid_dim: usize) -> (Vec<Vec3A>, Vec<u32>) {
         let mut rng = Xoshiro256PlusPlus::seed_from_u64(seed);
+        let unit_open = |rng: &mut Xoshiro256PlusPlus| rng.gen::<f32>() * 0.9999;
 
         let grid_size: usize = grid_dim * grid_dim * grid_dim;
         let particle_counts: Vec<u32> = (0..grid_size).map(|_| rng.gen_range(1..=10)).collect();
@@ -256,9 +257,9 @@ mod tests {
 
             for _ in 0..*n {
                 particles.push(Vec3A::new(
-                    x as f32 + rng.gen::<f32>(),
-                    y as f32 + rng.gen::<f32>(),
-                    z as f32 + rng.gen::<f32>(),
+                    x as f32 + unit_open(&mut rng),
+                    y as f32 + unit_open(&mut rng),
+                    z as f32 + unit_open(&mut rng),
                 ));
             }
         }

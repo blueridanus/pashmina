@@ -26,9 +26,17 @@ fn main(
     @builtin(global_invocation_id) global_id: vec3u,
     @builtin(local_invocation_id) local_id: vec3u,
 ) {
+    for (var i = 0u; i <= GRID_SIZE / WG_SIZE; i += 1u) {
+        let offset = i * WG_SIZE + local_id.x;
+        if offset < GRID_SIZE {
+            atomicStore(&shCount[offset], 0u);
+        }
+    }
+    workgroupBarrier();
+
     if global_id.x < arrayLength(&input) {
         let particle = input[global_id.x];
-        let grid_pos = vec3u(particle.position / params.cell_width);
+        let grid_pos = min(vec3u(particle.position / params.cell_width), vec3u(GRID_DIM - 1u));
         let grid_cell_idx = grid_pos.z * GRID_DIM * GRID_DIM + grid_pos.y * GRID_DIM + grid_pos.x;
         atomicAdd(&shCount[grid_cell_idx], 1u);
     }
