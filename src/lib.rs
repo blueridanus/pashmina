@@ -46,8 +46,6 @@ pub struct Pipelines {
     pub fenns_sort1: wgpu::ComputePipeline,
     pub fenns_sort2_bind_group_layout: wgpu::BindGroupLayout,
     pub fenns_sort2: wgpu::ComputePipeline,
-    pub fenns_sort_restore_bind_group_layout: wgpu::BindGroupLayout,
-    pub fenns_sort_restore: wgpu::ComputePipeline,
     pub fenns_sort_shift_bind_group_layout: wgpu::BindGroupLayout,
     pub fenns_sort_shift: wgpu::ComputePipeline,
     pub fenns_search_bind_group_layout: wgpu::BindGroupLayout,
@@ -146,16 +144,6 @@ impl Engine {
                 label: Some("kernels/fenns_sort2.wgsl"),
                 source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!(
                     "kernels/fenns_sort2.wgsl"
-                ))),
-            }),
-        );
-
-        kernels.insert(
-            "fenns_sort_restore".into(),
-            device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("kernels/fenns_sort_restore.wgsl"),
-                source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!(
-                    "kernels/fenns_sort_restore.wgsl"
                 ))),
             }),
         );
@@ -342,14 +330,6 @@ impl Engine {
             entry_point: "main",
         });
 
-        let fenns_sort_restore = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("pipelines/fenns_sort_restore"),
-            layout: None,
-            module: kernels.get("fenns_sort_restore").unwrap(),
-            entry_point: "main",
-        });
-        let fenns_sort_restore_bind_group_layout = fenns_sort_restore.get_bind_group_layout(0);
-
         let fenns_sort_shift = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("pipelines/fenns_sort_shift"),
             layout: None,
@@ -429,8 +409,6 @@ impl Engine {
                 fenns_sort1,
                 fenns_sort2_bind_group_layout,
                 fenns_sort2,
-                fenns_sort_restore_bind_group_layout,
-                fenns_sort_restore,
                 fenns_sort_shift_bind_group_layout,
                 fenns_sort_shift,
                 fenns_search_bind_group_layout,

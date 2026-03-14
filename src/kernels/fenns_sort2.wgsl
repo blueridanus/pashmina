@@ -24,22 +24,13 @@ var<storage, read_write> border_count: array<atomic<u32>>;
 
 const GRID_DIM: u32 = 18;
 const GRID_SIZE: u32 = GRID_DIM * GRID_DIM * GRID_DIM;
-var<workgroup> shBorderCount: array<atomic<u32>, GRID_SIZE>;
 
 const WG_SIZE: u32 = 64;
 @compute @workgroup_size(WG_SIZE)
 fn main(
     @builtin(global_invocation_id) global_id: vec3u,
-    @builtin(local_invocation_id) local_id: vec3u,
+    @builtin(local_invocation_id) _local_id: vec3u,
 ) {
-    for (var i = 0u; i <= GRID_SIZE / WG_SIZE; i += 1u) {
-        let offset = i * WG_SIZE + local_id.x;
-        if offset < GRID_SIZE {
-            atomicStore(&shBorderCount[offset], 0u);
-        }
-    }
-    workgroupBarrier();
-
     if global_id.x < arrayLength(&input) {
         let particle = input[global_id.x];
         let gridPos = vec3u(particle.position / params.cell_width);
@@ -51,23 +42,12 @@ fn main(
 
         var reorderedPos: u32;
         if isBorder {
-            atomicAdd(&shBorderCount[gridCellIdx], 1u);
-            reorderedPos = atomicAdd(&count[GRID_SIZE + gridCellIdx], 1u);
+            let border_offset = atomicAdd(&border_count[gridCellIdx], 1u);
+            reorderedPos = atomicLoad(&count[GRID_SIZE + gridCellIdx]) + border_offset;
         } else {
             reorderedPos = atomicSub(&count[gridCellIdx], 1u) - 1u;
         }
 
         reordered[reorderedPos] = particle;
-    }
-    workgroupBarrier();
-
-    for (var i = 0u; i <= GRID_SIZE / WG_SIZE; i += 1u) {
-        let offset = i * WG_SIZE + local_id.x;
-        if offset < GRID_SIZE {
-            let localBorderCount = atomicLoad(&shBorderCount[offset]);
-            if localBorderCount > 0u {
-                atomicAdd(&border_count[offset], localBorderCount);
-            }
-        }
     }
 }

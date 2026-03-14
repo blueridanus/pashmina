@@ -89,24 +89,8 @@ impl Engine {
             ],
         });
 
-        let restore_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None,
-            layout: &self.pipelines.fenns_sort_restore_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: bufs[2].as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: bufs[4].as_entire_binding(),
-                },
-            ],
-        });
-
         let mut encoder = self.device.create_command_encoder(&Default::default());
         let len = bufs[1].size() / 16;
-        let grid_len = bufs[4].size() / 4;
 
         encoder.clear_buffer(bufs[4], 0, None);
 
@@ -116,14 +100,6 @@ impl Engine {
             cpass.set_pipeline(&self.pipelines.fenns_sort2);
             cpass.set_bind_group(0, &bind_group, &[]);
             cpass.dispatch_workgroups(len.div_ceil(Self::FENNS_WG_SIZE) as u32, 1, 1);
-        }
-
-        {
-            let mut cpass = encoder.begin_compute_pass(&Default::default());
-            cpass.insert_debug_marker("fenns_sort_restore dispatch");
-            cpass.set_pipeline(&self.pipelines.fenns_sort_restore);
-            cpass.set_bind_group(0, &restore_bind_group, &[]);
-            cpass.dispatch_workgroups(grid_len.div_ceil(Self::FENNS_LINEAR_WG_SIZE) as u32, 1, 1);
         }
 
         self.queue.submit(Some(encoder.finish()));
@@ -155,8 +131,6 @@ impl Engine {
 
         let mut encoder = self.device.create_command_encoder(&Default::default());
         let grid_len = bufs[2].size() / 8;
-
-        encoder.clear_buffer(bufs[3], 0, None);
 
         {
             let mut cpass = encoder.begin_compute_pass(&Default::default());
