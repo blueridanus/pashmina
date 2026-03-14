@@ -13,7 +13,11 @@ fn main(
     @builtin(local_invocation_id) local_id: vec3u,
     @builtin(workgroup_id) wg_id: vec3u,
 ){
-    var sum = buf[global_id.x];
+    let in_bounds = global_id.x < arrayLength(&buf);
+    var sum = 0u;
+    if in_bounds {
+        sum = buf[global_id.x];
+    }
     scratchpad[local_id.x] = sum;
     workgroupBarrier();
     
@@ -26,7 +30,9 @@ fn main(
         scratchpad[local_id.x] = sum;
     }
 
-    buf[global_id.x] = sum;
+    if in_bounds {
+        buf[global_id.x] = sum;
+    }
 
     if local_id.x == WG_LEN - 1 {
         next[wg_id.x] = sum;

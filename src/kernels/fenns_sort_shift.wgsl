@@ -6,7 +6,12 @@ const WG_SIZE: u32 = 256;
 fn main(
     @builtin(global_invocation_id) global_id: vec3u,
 ) {
-    let idx = arrayLength(&count) / 2 + global_id.x;
+    let half_len = arrayLength(&count) / 2u;
+    if global_id.x >= half_len {
+        return;
+    }
+
+    let idx = half_len + global_id.x;
     if global_id.x == 0u {
         count[idx] = 0u;
     } else {

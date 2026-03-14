@@ -24,91 +24,84 @@ impl Engine {
     }
 
     pub fn prefix_sum_inner(&self, buf: &wgpu::Buffer) {
-        let input_len = buf.size() / 4;
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        let mut input_len = buf.size() / 4;
+        let mut level_input_lens = Vec::new();
+        let mut scratch = Vec::new();
 
-        let next_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("next buffer"),
-            size: 4 * (input_len).div_ceil(256),
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
+        loop {
+            level_input_lens.push(input_len);
+            scratch.push(self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("next buffer"),
+                size: 4 * input_len.div_ceil(256),
+                usage: wgpu::BufferUsages::STORAGE
+                    | wgpu::BufferUsages::COPY_DST
+                    | wgpu::BufferUsages::COPY_SRC,
+                mapped_at_creation: false,
+            }));
 
-        let bufs = [buf, &next_buffer];
+            if input_len <= 256 {
+                break;
+            }
 
-        self.dispatch_psum_kernel(&bufs, "psum1", 0);
-
-        if input_len > 256 {
-            self.prefix_sum_inner(&next_buffer);
-            self.dispatch_psum_kernel(&bufs, "psum2", 1);
+            input_len = input_len.div_ceil(256);
         }
+
+        for level in 0..scratch.len() {
+            let src = if level == 0 { buf } else { &scratch[level - 1] };
+            let dst = &scratch[level];
+            let bufs = [src, dst];
+            self.dispatch_psum_kernel_encoded(&bufs, "psum1", 0, &mut encoder);
+        }
+
+        for level in (0..scratch.len()).rev() {
+            if level_input_lens[level] <= 256 {
+                continue;
+            }
+
+            let src = if level == 0 { buf } else { &scratch[level - 1] };
+            let dst = &scratch[level];
+            let bufs = [src, dst];
+            self.dispatch_psum_kernel_encoded(&bufs, "psum2", 1, &mut encoder);
+        }
+
+        self.queue.submit(Some(encoder.finish()));
     }
 
-    fn dispatch_psum_kernel(&self, bufs: &[&wgpu::Buffer], kernel: &str, starting_offset: u32) {
+    fn dispatch_psum_kernel_encoded(
+        &self,
+        bufs: &[&wgpu::Buffer],
+        kernel: &str,
+        starting_offset: u32,
+        encoder: &mut wgpu::CommandEncoder,
+    ) {
         const MAX_WORKGROUPS: u32 = 65535;
         let total_wg_count = (bufs[0].size() / 4).div_ceil(256) as u32 - starting_offset;
+        if total_wg_count == 0 {
+            return;
+        }
 
-        let bind_group_layout =
-            self.device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: None,
-                    entries: &[
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 0,
-                            visibility: wgpu::ShaderStages::COMPUTE,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Storage { read_only: false },
-                                has_dynamic_offset: true,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 1,
-                            visibility: wgpu::ShaderStages::COMPUTE,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Storage { read_only: false },
-                                has_dynamic_offset: true,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        },
-                    ],
-                });
+        let pipeline = match kernel {
+            "psum1" => &self.pipelines.psum1,
+            "psum2" => &self.pipelines.psum2,
+            _ => unreachable!("unknown prefix-sum kernel"),
+        };
 
-        let pipeline_layout = self
-            .device
-            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: None,
-                bind_group_layouts: &[&bind_group_layout],
-                push_constant_ranges: &[],
-            });
-
-        let pipeline = self
-            .device
-            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: None,
-                layout: Some(&pipeline_layout),
-                module: self.kernels.get(kernel).unwrap(),
-                entry_point: "main",
-            });
-
-        let wg_remainder = total_wg_count % MAX_WORKGROUPS;
-        let mut buf1_size_remainder = bufs[0].size() % (MAX_WORKGROUPS as u64 * 256 * 4);
-        let buf2_size_remainder = buf1_size_remainder.div_ceil(256).max(4);
-        buf1_size_remainder -= starting_offset as u64 * 256 * 4;
+        let dispatch_window_wg = total_wg_count.min(MAX_WORKGROUPS);
+        let buf0_offset = starting_offset as u64 * 256 * 4;
+        let buf0_size = (bufs[0].size() - buf0_offset).min(dispatch_window_wg as u64 * 256 * 4);
+        let buf1_size = bufs[1].size().min((dispatch_window_wg as u64 * 4).max(4));
 
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
-            layout: &bind_group_layout,
+            layout: &self.pipelines.psum_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
                     resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                         buffer: bufs[0],
-                        offset: starting_offset as u64 * 256 * 4,
-                        size: buf1_size_remainder.try_into().ok(),
+                        offset: buf0_offset,
+                        size: buf0_size.try_into().ok(),
                     }),
                 },
                 wgpu::BindGroupEntry {
@@ -116,62 +109,25 @@ impl Engine {
                     resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                         buffer: bufs[1],
                         offset: 0,
-                        size: buf2_size_remainder.try_into().ok(),
+                        size: buf1_size.try_into().ok(),
                     }),
                 },
             ],
         });
 
-        let mut bind_group_max_dispatch = None;
         let dispatch_count = total_wg_count.div_ceil(MAX_WORKGROUPS);
 
-        if dispatch_count > 1 {
-            bind_group_max_dispatch =
-                Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: None,
-                    layout: &bind_group_layout,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                                buffer: bufs[0],
-                                offset: starting_offset as u64 * 256 * 4,
-                                size: (MAX_WORKGROUPS as u64 * 256 * 4).try_into().ok(),
-                            }),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                                buffer: bufs[1],
-                                offset: 0,
-                                size: (MAX_WORKGROUPS as u64 * 4).try_into().ok(),
-                            }),
-                        },
-                    ],
-                }));
-        }
-
-        let mut encoder = self.device.create_command_encoder(&Default::default());
-
         for dispatch_i in 0..dispatch_count {
+            let dispatched_wg = dispatch_i * MAX_WORKGROUPS;
+            let remaining_wg = total_wg_count - dispatched_wg;
+            let wg_count = remaining_wg.min(MAX_WORKGROUPS);
             let mut cpass = encoder.begin_compute_pass(&Default::default());
             cpass.insert_debug_marker(&format!("{} dispatch", kernel));
             cpass.set_pipeline(&pipeline);
-            let offsets = [
-                256 * 4 * dispatch_i * MAX_WORKGROUPS,
-                256 * 4 * dispatch_i * (MAX_WORKGROUPS / 256),
-            ];
-            
-            if dispatch_i == dispatch_count - 1 {
-                cpass.set_bind_group(0, &bind_group, &offsets);
-                cpass.dispatch_workgroups(wg_remainder, 1, 1);
-            } else {
-                cpass.set_bind_group(0, bind_group_max_dispatch.as_ref().unwrap(), &offsets);
-                cpass.dispatch_workgroups(MAX_WORKGROUPS, 1, 1);
-            }
+            let offsets = [256 * 4 * dispatched_wg, 4 * dispatched_wg];
+            cpass.set_bind_group(0, &bind_group, &offsets);
+            cpass.dispatch_workgroups(wg_count, 1, 1);
         }
-
-        self.queue.submit(Some(encoder.finish()));
     }
 }
 
