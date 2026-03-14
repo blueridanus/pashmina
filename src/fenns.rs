@@ -2,6 +2,7 @@ use crate::Engine;
 
 impl Engine {
     const FENNS_WG_SIZE: u64 = 64;
+    const FENNS_LINEAR_WG_SIZE: u64 = 256;
 
     pub fn fenns_sort1(&self, bufs: &[&wgpu::Buffer]) {
         let bind_group_layout =
@@ -119,7 +120,7 @@ impl Engine {
             cpass.insert_debug_marker("fenns_sort_shuffle dispatch");
             cpass.set_pipeline(&pipeline);
             cpass.set_bind_group(0, &bind_group, &[]);
-            cpass.dispatch_workgroups(len.div_ceil(Self::FENNS_WG_SIZE) as u32, 1, 1);
+            cpass.dispatch_workgroups(len.div_ceil(Self::FENNS_LINEAR_WG_SIZE) as u32, 1, 1);
         }
 
         self.queue.submit(Some(encoder.finish()));
@@ -171,6 +172,16 @@ impl Engine {
                             },
                             count: None,
                         },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 4,
+                            visibility: wgpu::ShaderStages::COMPUTE,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Storage { read_only: false },
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
+                        },
                     ],
                 });
 
@@ -211,11 +222,42 @@ impl Engine {
                     binding: 3,
                     resource: bufs[3].as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: bufs[4].as_entire_binding(),
+                },
+            ],
+        });
+
+        let restore_pipeline = self
+            .device
+            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: None,
+                layout: None,
+                module: self.kernels.get("fenns_sort_restore").unwrap(),
+                entry_point: "main",
+            });
+        let restore_bind_group_layout = restore_pipeline.get_bind_group_layout(0);
+        let restore_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &restore_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: bufs[2].as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: bufs[4].as_entire_binding(),
+                },
             ],
         });
 
         let mut encoder = self.device.create_command_encoder(&Default::default());
         let len = bufs[1].size() / 16;
+        let grid_len = bufs[4].size() / 4;
+
+        encoder.clear_buffer(bufs[4], 0, None);
 
         {
             let mut cpass = encoder.begin_compute_pass(&Default::default());
@@ -223,6 +265,14 @@ impl Engine {
             cpass.set_pipeline(&pipeline);
             cpass.set_bind_group(0, &bind_group, &[]);
             cpass.dispatch_workgroups(len.div_ceil(Self::FENNS_WG_SIZE) as u32, 1, 1);
+        }
+
+        {
+            let mut cpass = encoder.begin_compute_pass(&Default::default());
+            cpass.insert_debug_marker("fenns_sort_restore dispatch");
+            cpass.set_pipeline(&restore_pipeline);
+            cpass.set_bind_group(0, &restore_bind_group, &[]);
+            cpass.dispatch_workgroups(grid_len.div_ceil(Self::FENNS_LINEAR_WG_SIZE) as u32, 1, 1);
         }
 
         self.queue.submit(Some(encoder.finish()));
@@ -362,6 +412,13 @@ mod tests {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
         });
 
+        let border_count_buf = engine.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("fenns_sort2/buf4"),
+            size: 4 * GRID_SIZE as u64,
+            mapped_at_creation: false,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        });
+
         engine.fenns_sort1(&[&params_buf, &particles_buf, &count_buf]);
 
         let counts: Vec<u32> = engine.map_buffer(&count_buf).await?;
@@ -379,12 +436,13 @@ mod tests {
         assert_eq!(shifted[particle_counts.len()], 0);
         assert_slices_eq(&shifted[..particle_counts.len()-1], &shifted[particle_counts.len()+1..]);
 
-        engine.fenns_sort2(&[&params_buf, &particles_buf, &count_buf, &reordered_buf]);
+        engine.fenns_sort2(&[&params_buf, &particles_buf, &count_buf, &reordered_buf, &border_count_buf]);
 
+        let count_state: Vec<u32> = engine.map_buffer(&count_buf).await?;
         let reordered: Vec<Vec3A> = engine.map_buffer(&reordered_buf).await?;
         
         let original_zeros = particles.iter().filter(|&&v| v == Vec3A::new(0.0,0.0,0.0)).count();
-        let reordered_zeros = reordered.iter().enumerate().filter(|(i, &v)| v == Vec3A::new(0.0,0.0,0.0));
+        let reordered_zeros = reordered.iter().enumerate().filter(|(_i, &v)| v == Vec3A::new(0.0,0.0,0.0));
         
         if reordered_zeros.clone().count() != original_zeros {
             panic!("Reordering has zero particles: {:?}", reordered_zeros.collect::<Vec<(usize, _)>>())
@@ -400,9 +458,14 @@ mod tests {
             return false;      
         };
         let mut i = 0;
-        for count in particle_counts.into_iter() {
-            let mut border_j = 0;
-            let mut nonborder_j = 0;
+        for (cell_idx, count) in particle_counts.into_iter().enumerate() {
+            let border_count = particles[i..i + count as usize]
+                .iter()
+                .filter(|&&particle| is_border_particle(particle))
+                .count();
+
+            assert_eq!(count_state[cell_idx], i as u32);
+            assert_eq!(count_state[GRID_SIZE + cell_idx], i as u32 + border_count as u32);
 
             for j in 0..(count as usize) {
                 if !particles[i..i+(count as usize)].iter().find(|&&x| reordered[i+j] == x).is_some() {
@@ -418,12 +481,10 @@ mod tests {
                     panic!();
                 };
 
-                let particle = particles[i+j];
-                // TODO: check if reorder idxs are correct
-                if is_border_particle(particle) {
-                    border_j += 1;
+                if j < border_count {
+                    assert!(is_border_particle(reordered[i + j]));
                 } else {
-                    nonborder_j += 1;
+                    assert!(!is_border_particle(reordered[i + j]));
                 }
             }
             i += count as usize;

@@ -134,6 +134,14 @@ impl Engine {
                 source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("kernels/fenns_sort2.wgsl"))),
             }),
         );
+
+        kernels.insert(
+            "fenns_sort_restore".into(),
+            device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("kernels/fenns_sort_restore.wgsl"),
+                source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("kernels/fenns_sort_restore.wgsl"))),
+            }),
+        );
         
         kernels.insert(
             "fenns_sort_shift".into(),
