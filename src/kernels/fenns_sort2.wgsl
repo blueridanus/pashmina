@@ -42,7 +42,7 @@ fn main(
 
     if global_id.x < arrayLength(&input) {
         let particle = input[global_id.x];
-        let gridPos = min(vec3u(particle.position / params.cell_width), vec3u(GRID_DIM - 1u));
+        let gridPos = vec3u(particle.position / params.cell_width);
         let gridCellIdx = gridPos.z * GRID_DIM * GRID_DIM + gridPos.y * GRID_DIM + gridPos.x;
 
         let innerSize = params.cell_width - 2.0 * params.search_radius;

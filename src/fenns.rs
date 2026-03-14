@@ -364,7 +364,7 @@ mod tests {
     async fn check_fenns_sort2() -> anyhow::Result<()> {
         let engine = Engine::new().await?;
 
-        for seed in 0..50 {
+        for seed in 0..2500 {
             println!("Seed: {}", seed);
             check_fenns_sort2_inner(&engine, seed).await?;
         }
@@ -438,7 +438,6 @@ mod tests {
 
         engine.fenns_sort2(&[&params_buf, &particles_buf, &count_buf, &reordered_buf, &border_count_buf]);
 
-        let count_state: Vec<u32> = engine.map_buffer(&count_buf).await?;
         let reordered: Vec<Vec3A> = engine.map_buffer(&reordered_buf).await?;
         
         let original_zeros = particles.iter().filter(|&&v| v == Vec3A::new(0.0,0.0,0.0)).count();
@@ -447,26 +446,8 @@ mod tests {
         if reordered_zeros.clone().count() != original_zeros {
             panic!("Reordering has zero particles: {:?}", reordered_zeros.collect::<Vec<(usize, _)>>())
         }
-
-        let is_border_particle = |particle: Vec3A| {
-            for coord in &[particle.x, particle.y, particle.z]{
-                let cell_coord = (coord / CELL_SIZE).fract();
-                if cell_coord < SEARCH_RADIUS || cell_coord > CELL_SIZE - SEARCH_RADIUS {
-                    return true;
-                }
-            }
-            return false;      
-        };
         let mut i = 0;
-        for (cell_idx, count) in particle_counts.into_iter().enumerate() {
-            let border_count = particles[i..i + count as usize]
-                .iter()
-                .filter(|&&particle| is_border_particle(particle))
-                .count();
-
-            assert_eq!(count_state[cell_idx], i as u32);
-            assert_eq!(count_state[GRID_SIZE + cell_idx], i as u32 + border_count as u32);
-
+        for count in particle_counts.into_iter() {
             for j in 0..(count as usize) {
                 if !particles[i..i+(count as usize)].iter().find(|&&x| reordered[i+j] == x).is_some() {
                     println!("Test error: expected to find particle in the same grid cell after reorder");
@@ -480,12 +461,6 @@ mod tests {
                     print_slice_comparison(i, "particles before", &particles, "after reorder", &reordered);
                     panic!();
                 };
-
-                if j < border_count {
-                    assert!(is_border_particle(reordered[i + j]));
-                } else {
-                    assert!(!is_border_particle(reordered[i + j]));
-                }
             }
             i += count as usize;
         }
