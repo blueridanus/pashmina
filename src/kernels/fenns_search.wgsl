@@ -24,11 +24,15 @@ const GRID_SIZE: u32 = GRID_DIM * GRID_DIM * GRID_DIM;
 const WG_SIZE: u32 = 64u;
 const LOCAL_GRID_DIM: u32 = 12u;
 const LOCAL_GRID_SIZE: u32 = LOCAL_GRID_DIM * LOCAL_GRID_DIM * LOCAL_GRID_DIM;
+const LOCAL_GRID_CHUNK_SIZE: u32 = LOCAL_GRID_SIZE / WG_SIZE;
 const INVALID_INDEX: u32 = 0xffffffffu;
 
 var<workgroup> sh_particles: array<Particle, WG_SIZE>;
 var<workgroup> sh_particle_indices: array<u32, WG_SIZE>;
-var<workgroup> sh_grid_offsets: array<atomic<u32>, LOCAL_GRID_SIZE>;
+var<workgroup> sh_grid_counts: array<atomic<u32>, LOCAL_GRID_SIZE>;
+var<workgroup> sh_grid_offsets: array<u32, LOCAL_GRID_SIZE>;
+var<workgroup> sh_chunk_prefix: array<u32, WG_SIZE>;
+var<workgroup> sh_chunk_scratch: array<u32, WG_SIZE>;
 
 fn decode_grid_pos(cell_idx: u32) -> vec3u {
     let x = cell_idx % GRID_DIM;
@@ -94,11 +98,11 @@ fn exclusive_offset(idx: u32) -> u32 {
         return 0u;
     }
 
-    return atomicLoad(&sh_grid_offsets[idx - 1u]);
+    return sh_grid_offsets[idx - 1u];
 }
 
 fn inclusive_offset(idx: u32) -> u32 {
-    return atomicLoad(&sh_grid_offsets[idx]);
+    return sh_grid_offsets[idx];
 }
 
 fn lookup_neighbor_cells(neighbor_particle: Particle, neighbor_index: u32, local_origin: vec3f) {
@@ -158,7 +162,7 @@ fn main(
 
     for (var batch_start = start; batch_start < padded_end; batch_start += WG_SIZE) {
         for (var offset = local_id.x; offset < LOCAL_GRID_SIZE; offset += WG_SIZE) {
-            atomicStore(&sh_grid_offsets[offset], 0u);
+            atomicStore(&sh_grid_counts[offset], 0u);
         }
         workgroupBarrier();
 
@@ -174,17 +178,38 @@ fn main(
             local_pos = calculate_local_grid_position(particle, origin);
             if is_valid_local_pos(local_pos) {
                 let flat_pos = flatten_local_pos(local_pos);
-                local_offset = atomicAdd(&sh_grid_offsets[flat_pos], 1u);
+                local_offset = atomicAdd(&sh_grid_counts[flat_pos], 1u);
             }
         }
         workgroupBarrier();
 
-        // TODO: workgroup parallel
-        if local_id.x == 0u {
-            var running = 0u;
-            for (var idx = 0u; idx < LOCAL_GRID_SIZE; idx += 1u) {
-                running += atomicLoad(&sh_grid_offsets[idx]);
-                atomicStore(&sh_grid_offsets[idx], running);
+        let chunk_start = local_id.x * LOCAL_GRID_CHUNK_SIZE;
+        var running = 0u;
+        for (var chunk_offset = 0u; chunk_offset < LOCAL_GRID_CHUNK_SIZE; chunk_offset += 1u) {
+            let idx = chunk_start + chunk_offset;
+            running += atomicLoad(&sh_grid_counts[idx]);
+            sh_grid_offsets[idx] = running;
+        }
+        sh_chunk_prefix[local_id.x] = running;
+        workgroupBarrier();
+
+        for (var stride = 1u; stride < WG_SIZE; stride *= 2u) {
+            var value = sh_chunk_prefix[local_id.x];
+            if local_id.x >= stride {
+                value += sh_chunk_prefix[local_id.x - stride];
+            }
+            sh_chunk_scratch[local_id.x] = value;
+            workgroupBarrier();
+
+            sh_chunk_prefix[local_id.x] = sh_chunk_scratch[local_id.x];
+            workgroupBarrier();
+        }
+
+        if local_id.x > 0u {
+            let chunk_base = sh_chunk_prefix[local_id.x - 1u];
+            for (var chunk_offset = 0u; chunk_offset < LOCAL_GRID_CHUNK_SIZE; chunk_offset += 1u) {
+                let idx = chunk_start + chunk_offset;
+                sh_grid_offsets[idx] += chunk_base;
             }
         }
         workgroupBarrier();

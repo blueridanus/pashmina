@@ -5,64 +5,9 @@ impl Engine {
     const FENNS_LINEAR_WG_SIZE: u64 = 256;
 
     pub fn fenns_sort1(&self, bufs: &[&wgpu::Buffer]) {
-        let bind_group_layout =
-            self.device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: None,
-                    entries: &[
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 0,
-                            visibility: wgpu::ShaderStages::COMPUTE,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Uniform,
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 1,
-                            visibility: wgpu::ShaderStages::COMPUTE,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Storage { read_only: true },
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 2,
-                            visibility: wgpu::ShaderStages::COMPUTE,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Storage { read_only: false },
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        },
-                    ],
-                });
-
-        let pipeline_layout = self
-            .device
-            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: None,
-                bind_group_layouts: &[&bind_group_layout],
-                push_constant_ranges: &[],
-            });
-
-        let pipeline = self
-            .device
-            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: None,
-                layout: Some(&pipeline_layout),
-                module: self.kernels.get("fenns_sort1").unwrap(),
-                entry_point: "main",
-            });
-
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
-            layout: &bind_group_layout,
+            layout: &self.pipelines.fenns_sort1_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -85,7 +30,7 @@ impl Engine {
         {
             let mut cpass = encoder.begin_compute_pass(&Default::default());
             cpass.insert_debug_marker("fenns_sort1 dispatch");
-            cpass.set_pipeline(&pipeline);
+            cpass.set_pipeline(&self.pipelines.fenns_sort1);
             cpass.set_bind_group(0, &bind_group, &[]);
             cpass.dispatch_workgroups(len.div_ceil(Self::FENNS_WG_SIZE) as u32, 1, 1);
         }
@@ -94,19 +39,9 @@ impl Engine {
     }
 
     pub fn fenns_sort_shift(&self, buf: &wgpu::Buffer) {
-        let pipeline = self
-            .device
-            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: None,
-                layout: None,
-                module: self.kernels.get("fenns_sort_shift").unwrap(),
-                entry_point: "main",
-            });
-
-        let bind_group_layout = pipeline.get_bind_group_layout(0);
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
-            layout: &bind_group_layout,
+            layout: &self.pipelines.fenns_sort_shift_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: buf.as_entire_binding(),
@@ -118,7 +53,7 @@ impl Engine {
         {
             let mut cpass = encoder.begin_compute_pass(&Default::default());
             cpass.insert_debug_marker("fenns_sort_shuffle dispatch");
-            cpass.set_pipeline(&pipeline);
+            cpass.set_pipeline(&self.pipelines.fenns_sort_shift);
             cpass.set_bind_group(0, &bind_group, &[]);
             cpass.dispatch_workgroups(len.div_ceil(Self::FENNS_LINEAR_WG_SIZE) as u32, 1, 1);
         }
@@ -127,84 +62,9 @@ impl Engine {
     }
 
     pub fn fenns_sort2(&self, bufs: &[&wgpu::Buffer]) {
-        let bind_group_layout =
-            self.device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: None,
-                    entries: &[
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 0,
-                            visibility: wgpu::ShaderStages::COMPUTE,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Uniform,
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 1,
-                            visibility: wgpu::ShaderStages::COMPUTE,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Storage { read_only: true },
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 2,
-                            visibility: wgpu::ShaderStages::COMPUTE,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Storage { read_only: false },
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 3,
-                            visibility: wgpu::ShaderStages::COMPUTE,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Storage { read_only: false },
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 4,
-                            visibility: wgpu::ShaderStages::COMPUTE,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Storage { read_only: false },
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        },
-                    ],
-                });
-
-        let pipeline_layout = self
-            .device
-            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: None,
-                bind_group_layouts: &[&bind_group_layout],
-                push_constant_ranges: &[],
-            });
-
-        let pipeline = self
-            .device
-            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: None,
-                layout: Some(&pipeline_layout),
-                module: self.kernels.get("fenns_sort2").unwrap(),
-                entry_point: "main",
-            });
-
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
-            layout: &bind_group_layout,
+            layout: &self.pipelines.fenns_sort2_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -229,18 +89,9 @@ impl Engine {
             ],
         });
 
-        let restore_pipeline =
-            self.device
-                .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                    label: None,
-                    layout: None,
-                    module: self.kernels.get("fenns_sort_restore").unwrap(),
-                    entry_point: "main",
-                });
-        let restore_bind_group_layout = restore_pipeline.get_bind_group_layout(0);
         let restore_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
-            layout: &restore_bind_group_layout,
+            layout: &self.pipelines.fenns_sort_restore_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -262,7 +113,7 @@ impl Engine {
         {
             let mut cpass = encoder.begin_compute_pass(&Default::default());
             cpass.insert_debug_marker("fenns_sort2 dispatch");
-            cpass.set_pipeline(&pipeline);
+            cpass.set_pipeline(&self.pipelines.fenns_sort2);
             cpass.set_bind_group(0, &bind_group, &[]);
             cpass.dispatch_workgroups(len.div_ceil(Self::FENNS_WG_SIZE) as u32, 1, 1);
         }
@@ -270,7 +121,7 @@ impl Engine {
         {
             let mut cpass = encoder.begin_compute_pass(&Default::default());
             cpass.insert_debug_marker("fenns_sort_restore dispatch");
-            cpass.set_pipeline(&restore_pipeline);
+            cpass.set_pipeline(&self.pipelines.fenns_sort_restore);
             cpass.set_bind_group(0, &restore_bind_group, &[]);
             cpass.dispatch_workgroups(grid_len.div_ceil(Self::FENNS_LINEAR_WG_SIZE) as u32, 1, 1);
         }
@@ -279,74 +130,9 @@ impl Engine {
     }
 
     pub fn fenns_search(&self, bufs: &[&wgpu::Buffer]) {
-        let bind_group_layout =
-            self.device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: None,
-                    entries: &[
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 0,
-                            visibility: wgpu::ShaderStages::COMPUTE,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Uniform,
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 1,
-                            visibility: wgpu::ShaderStages::COMPUTE,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Storage { read_only: true },
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 2,
-                            visibility: wgpu::ShaderStages::COMPUTE,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Storage { read_only: true },
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 3,
-                            visibility: wgpu::ShaderStages::COMPUTE,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Storage { read_only: false },
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        },
-                    ],
-                });
-
-        let pipeline_layout = self
-            .device
-            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: None,
-                bind_group_layouts: &[&bind_group_layout],
-                push_constant_ranges: &[],
-            });
-
-        let pipeline = self
-            .device
-            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: None,
-                layout: Some(&pipeline_layout),
-                module: self.kernels.get("fenns_search").unwrap(),
-                entry_point: "main",
-            });
-
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
-            layout: &bind_group_layout,
+            layout: &self.pipelines.fenns_search_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -375,7 +161,7 @@ impl Engine {
         {
             let mut cpass = encoder.begin_compute_pass(&Default::default());
             cpass.insert_debug_marker("fenns_search dispatch");
-            cpass.set_pipeline(&pipeline);
+            cpass.set_pipeline(&self.pipelines.fenns_search);
             cpass.set_bind_group(0, &bind_group, &[]);
             cpass.dispatch_workgroups(grid_len as u32, 1, 1);
         }

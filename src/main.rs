@@ -10,7 +10,7 @@ const CELL_SIZE: f32 = 1.0;
 const SEARCH_RADIUS: f32 = 0.1;
 const WARMUP_ITERS: usize = 3;
 const MEASURE_ITERS: usize = 10;
-const PARTICLE_COUNTS: [usize; 5] = [1 << 12, 1 << 14, 1 << 16, 1 << 18, 1 << 20];
+const PARTICLE_COUNTS: [usize; 5] = [1 << 12, 1 << 14, 1 << 16, 1 << 19, 1 << 20];
 
 fn splitmix32(mut x: u32) -> u32 {
     x = x.wrapping_add(0x9e3779b9);

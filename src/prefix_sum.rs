@@ -48,51 +48,11 @@ impl Engine {
     fn dispatch_psum_kernel(&self, bufs: &[&wgpu::Buffer], kernel: &str, starting_offset: u32) {
         const MAX_WORKGROUPS: u32 = 65535;
         let total_wg_count = (bufs[0].size() / 4).div_ceil(256) as u32 - starting_offset;
-
-        let bind_group_layout =
-            self.device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: None,
-                    entries: &[
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 0,
-                            visibility: wgpu::ShaderStages::COMPUTE,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Storage { read_only: false },
-                                has_dynamic_offset: true,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 1,
-                            visibility: wgpu::ShaderStages::COMPUTE,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Storage { read_only: false },
-                                has_dynamic_offset: true,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        },
-                    ],
-                });
-
-        let pipeline_layout = self
-            .device
-            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: None,
-                bind_group_layouts: &[&bind_group_layout],
-                push_constant_ranges: &[],
-            });
-
-        let pipeline = self
-            .device
-            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: None,
-                layout: Some(&pipeline_layout),
-                module: self.kernels.get(kernel).unwrap(),
-                entry_point: "main",
-            });
+        let pipeline = match kernel {
+            "psum1" => &self.pipelines.psum1,
+            "psum2" => &self.pipelines.psum2,
+            _ => unreachable!("unknown prefix-sum kernel"),
+        };
 
         let wg_remainder = total_wg_count % MAX_WORKGROUPS;
         let mut buf1_size_remainder = bufs[0].size() % (MAX_WORKGROUPS as u64 * 256 * 4);
@@ -101,7 +61,7 @@ impl Engine {
 
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
-            layout: &bind_group_layout,
+            layout: &self.pipelines.psum_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -129,7 +89,7 @@ impl Engine {
             bind_group_max_dispatch =
                 Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                     label: None,
-                    layout: &bind_group_layout,
+                    layout: &self.pipelines.psum_bind_group_layout,
                     entries: &[
                         wgpu::BindGroupEntry {
                             binding: 0,

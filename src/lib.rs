@@ -35,6 +35,23 @@ pub struct Engine {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
     pub kernels: HashMap<String, wgpu::ShaderModule>,
+    pub pipelines: Pipelines,
+}
+
+pub struct Pipelines {
+    pub psum_bind_group_layout: wgpu::BindGroupLayout,
+    pub psum1: wgpu::ComputePipeline,
+    pub psum2: wgpu::ComputePipeline,
+    pub fenns_sort1_bind_group_layout: wgpu::BindGroupLayout,
+    pub fenns_sort1: wgpu::ComputePipeline,
+    pub fenns_sort2_bind_group_layout: wgpu::BindGroupLayout,
+    pub fenns_sort2: wgpu::ComputePipeline,
+    pub fenns_sort_restore_bind_group_layout: wgpu::BindGroupLayout,
+    pub fenns_sort_restore: wgpu::ComputePipeline,
+    pub fenns_sort_shift_bind_group_layout: wgpu::BindGroupLayout,
+    pub fenns_sort_shift: wgpu::ComputePipeline,
+    pub fenns_search_bind_group_layout: wgpu::BindGroupLayout,
+    pub fenns_search: wgpu::ComputePipeline,
 }
 
 impl Engine {
@@ -163,10 +180,262 @@ impl Engine {
             }),
         );
 
+        let psum_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("layouts/psum"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: true,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: true,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
+        let psum_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("pipelines/psum"),
+            bind_group_layouts: &[&psum_bind_group_layout],
+            push_constant_ranges: &[],
+        });
+        let psum1 = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("pipelines/psum1"),
+            layout: Some(&psum_pipeline_layout),
+            module: kernels.get("psum1").unwrap(),
+            entry_point: "main",
+        });
+        let psum2 = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("pipelines/psum2"),
+            layout: Some(&psum_pipeline_layout),
+            module: kernels.get("psum2").unwrap(),
+            entry_point: "main",
+        });
+
+        let fenns_sort1_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("layouts/fenns_sort1"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
+        let fenns_sort1_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("pipelines/fenns_sort1"),
+                bind_group_layouts: &[&fenns_sort1_bind_group_layout],
+                push_constant_ranges: &[],
+            });
+        let fenns_sort1 = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("pipelines/fenns_sort1"),
+            layout: Some(&fenns_sort1_pipeline_layout),
+            module: kernels.get("fenns_sort1").unwrap(),
+            entry_point: "main",
+        });
+
+        let fenns_sort2_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("layouts/fenns_sort2"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 4,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
+        let fenns_sort2_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("pipelines/fenns_sort2"),
+                bind_group_layouts: &[&fenns_sort2_bind_group_layout],
+                push_constant_ranges: &[],
+            });
+        let fenns_sort2 = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("pipelines/fenns_sort2"),
+            layout: Some(&fenns_sort2_pipeline_layout),
+            module: kernels.get("fenns_sort2").unwrap(),
+            entry_point: "main",
+        });
+
+        let fenns_sort_restore = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("pipelines/fenns_sort_restore"),
+            layout: None,
+            module: kernels.get("fenns_sort_restore").unwrap(),
+            entry_point: "main",
+        });
+        let fenns_sort_restore_bind_group_layout = fenns_sort_restore.get_bind_group_layout(0);
+
+        let fenns_sort_shift = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("pipelines/fenns_sort_shift"),
+            layout: None,
+            module: kernels.get("fenns_sort_shift").unwrap(),
+            entry_point: "main",
+        });
+        let fenns_sort_shift_bind_group_layout = fenns_sort_shift.get_bind_group_layout(0);
+
+        let fenns_search_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("layouts/fenns_search"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
+        let fenns_search_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("pipelines/fenns_search"),
+                bind_group_layouts: &[&fenns_search_bind_group_layout],
+                push_constant_ranges: &[],
+            });
+        let fenns_search = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("pipelines/fenns_search"),
+            layout: Some(&fenns_search_pipeline_layout),
+            module: kernels.get("fenns_search").unwrap(),
+            entry_point: "main",
+        });
+
         Ok(Self {
             device,
             queue,
             kernels,
+            pipelines: Pipelines {
+                psum_bind_group_layout,
+                psum1,
+                psum2,
+                fenns_sort1_bind_group_layout,
+                fenns_sort1,
+                fenns_sort2_bind_group_layout,
+                fenns_sort2,
+                fenns_sort_restore_bind_group_layout,
+                fenns_sort_restore,
+                fenns_sort_shift_bind_group_layout,
+                fenns_sort_shift,
+                fenns_search_bind_group_layout,
+                fenns_search,
+            },
         })
     }
 }
